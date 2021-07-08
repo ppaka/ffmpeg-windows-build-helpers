@@ -1322,6 +1322,7 @@ build_libtheora() {
 build_libsndfile() {
   do_git_checkout https://github.com/libsndfile/libsndfile.git
   cd libsndfile_git
+    apply_patch file://$patch_dir/libsndfile.diff -p1
     generic_configure "--disable-sqlite --disable-external-libs --disable-full-suite"
     do_make_and_make_install
     if [ "$1" = "install-libgsm" ]; then
