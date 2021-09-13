@@ -1,3 +1,11 @@
+This scripts is for '[FFmpeg for Unity](https://assetstore.unity.com/packages/tools/video/ffmpeg-for-unity-199811)'
+
+NOTE: If you want to run this scripts and use binaries, please add  [NamedPipeConnecter.exe](https://github.com/NON906/ffmpeg-windows-build-helpers/releases/download/1.0/NamedPipeConnecter.exe).
+
+Original README.md is follow:
+
+---
+
 ffmpeg-windows-build-helpers
 ============================
 
