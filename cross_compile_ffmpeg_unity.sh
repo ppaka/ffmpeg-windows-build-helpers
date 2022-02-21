@@ -86,9 +86,9 @@ check_missing_packages () {
     echo 'Install the missing packages before running this script.'
     determine_distro
 
-    apt_pkgs='subversion ragel curl texinfo g++ bison flex cvs yasm automake libtool autoconf gcc cmake git make pkg-config zlib1g-dev unzip pax nasm gperf autogen bzip2 autoconf-archive p7zip-full meson clang'
+    apt_pkgs='subversion ragel curl texinfo g++ ed bison flex cvs yasm automake libtool autoconf gcc cmake git make pkg-config zlib1g-dev unzip pax nasm gperf autogen bzip2 autoconf-archive p7zip-full meson clang'
 
-    [[ $DISTRO == "debian" ]] && apt_pkgs="$apt_pkgs libtool-bin ed"
+    [[ $DISTRO == "debian" ]] && apt_pkgs="$apt_pkgs libtool-bin ed" # extra for debian
     case "$DISTRO" in
       Ubuntu)
         echo "for ubuntu:"
@@ -101,6 +101,9 @@ check_missing_packages () {
           apt_pkgs="$apt_pkgs python-is-python3" # needed
         fi
         echo "$ sudo apt-get install $apt_pkgs -y"
+        if uname -a | grep  -q -- "-microsoft" ; then
+         echo NB if you use WSL Ubuntu 20.04 you need to do an extra step: https://github.com/rdp/ffmpeg-windows-build-helpers/issues/452
+	fi
         ;;
       debian)
         echo "for debian:"
@@ -215,6 +218,7 @@ check_missing_packages () {
       Please update via windows update then try again"
       exit 1
     fi
+    echo "for WSL ubuntu 20.04 you need to do an extra step https://github.com/rdp/ffmpeg-windows-build-helpers/issues/452"
   fi
 
 }
@@ -431,14 +435,14 @@ do_git_checkout() {
     desired_branch="origin/master"
   fi
   echo "doing git checkout $desired_branch"
-  git checkout "$desired_branch" || (git_hard_reset && git checkout "$desired_branch") || (git reset --hard "$desired_branch") || exit 1 # can't just use merge -f because might "think" patch files already applied when their changes have been lost, etc...
+  git -c 'advice.detachedHead=false' checkout "$desired_branch" || (git_hard_reset && git -c 'advice.detachedHead=false' checkout "$desired_branch") || (git reset --hard "$desired_branch") || exit 1 # can't just use merge -f because might "think" patch files already applied when their changes have been lost, etc...
   # vmaf on 16.04 needed that weird reset --hard? huh?
   if git show-ref --verify --quiet "refs/remotes/origin/$desired_branch"; then # $desired_branch is actually a branch, not a tag or commit
     git merge "origin/$desired_branch" || exit 1 # get incoming changes to a branch
   fi
   new_git_version=`git rev-parse HEAD`
   if [[ "$old_git_version" != "$new_git_version" ]]; then
-    echo "got upstream changes, forcing re-configure. Doing git clean -f"
+    echo "got upstream changes, forcing re-configure. Doing git clean"
     git_hard_reset
   else
     echo "fetched no code changes, not forcing reconfigure for that..."
@@ -448,7 +452,7 @@ do_git_checkout() {
 
 git_hard_reset() {
   git reset --hard # throw away results of patch files
-  git clean -f # throw away local changes; 'already_*' and bak-files for instance.
+  git clean -fx # throw away local changes; 'already_*' and bak-files for instance.
 }
 
 get_small_touchfile_name() { # have to call with assignment like a=$(get_small...)
@@ -841,7 +845,7 @@ build_amd_amf_headers() {
 }
 
 build_nv_headers() {
-  do_git_checkout https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
+  do_git_checkout https://github.com/FFmpeg/nv-codec-headers.git
   cd nv-codec-headers_git
     do_make_install "PREFIX=$mingw_w64_x86_64_prefix" # just copies in headers
   cd ..
@@ -866,7 +870,7 @@ build_intel_quicksync_mfx() { # i.e. qsv, disableable via command line switch...
 
 build_libleptonica() {
   build_libjpeg_turbo
-  do_git_checkout https://github.com/DanBloomberg/leptonica.git leptonica_git 1.80.0
+  do_git_checkout https://github.com/DanBloomberg/leptonica.git leptonica_git 1.82.0
   cd leptonica_git
     export CPPFLAGS="-DOPJ_STATIC"
     generic_configure_make_install
@@ -1093,13 +1097,13 @@ build_fontconfig() {
 }
 
 build_gmp() {
-  download_and_unpack_file https://ftp.gnu.org/pub/gnu/gmp/gmp-6.2.0.tar.xz
-  cd gmp-6.2.0
-    #export CC_FOR_BUILD=/usr/bin/gcc # Are these needed?
-    #export CPP_FOR_BUILD=usr/bin/cpp
+  download_and_unpack_file https://ftp.gnu.org/pub/gnu/gmp/gmp-6.2.1.tar.xz
+  cd gmp-6.2.1
+    export CC_FOR_BUILD=/usr/bin/gcc # WSL seems to need this..
+    export CPP_FOR_BUILD=usr/bin/cpp
     generic_configure "ABI=$bits_target"
-    #unset CC_FOR_BUILD
-    #unset CPP_FOR_BUILD
+    unset CC_FOR_BUILD
+    unset CPP_FOR_BUILD
     do_make_and_make_install
   cd ..
 }
@@ -1454,9 +1458,8 @@ build_libbluray() {
       local local_git_version=`git --git-dir=.git/modules/contrib/libudfread rev-parse HEAD`
       local remote_git_version=`git ls-remote -h https://code.videolan.org/videolan/libudfread.git | sed "s/[[:space:]].*//"`
       if [[ "$local_git_version" != "$remote_git_version" ]]; then
-        echo "doing git clean -f"
-        git clean -f # Throw away local changes; 'already_*' in this case.
-        git submodule foreach -q 'git clean -f' # Throw away local changes; 'already_configured_*' and 'udfread.c.bak' in this case.
+        echo "detected upstream udfread changed, attempted to update submodules" # XXX use do_git_checkout here instead somehow?
+        git submodule foreach -q 'git clean -fx' # Throw away local changes; 'already_configured_*' and 'udfread.c.bak' in this case.
         rm -f contrib/libudfread/src/udfread-version.h
         git submodule update --remote -f # Checkout even if the working tree differs from HEAD.
       fi
@@ -1488,7 +1491,7 @@ build_libbs2b() {
 }
 
 build_libsoxr() {
-  do_git_checkout https://git.code.sf.net/p/soxr/code soxr_git
+  do_git_checkout https://github.com/chirlu/soxr.git soxr_git
   cd soxr_git
     do_cmake_and_install "-DHAVE_WORDS_BIGENDIAN_EXITCODE=0 -DWITH_OPENMP=0 -DBUILD_TESTS=0 -DBUILD_EXAMPLES=0"
   cd ..
@@ -1683,11 +1686,12 @@ build_libsrt() {
   download_and_unpack_file https://github.com/Haivision/srt/archive/v1.4.1.tar.gz srt-1.4.1
   cd srt-1.4.1
     if [[ $compiler_flavors != "native" ]]; then
-      do_cmake "-DUSE_GNUTLS=ON -DENABLE_SHARED=OFF"
       apply_patch file://$patch_dir/srt.app.patch -p1
-    else
-      do_cmake "-DUSE_GNUTLS=ON -DENABLE_SHARED=OFF -DENABLE_CXX11=OFF"
     fi
+    # CMake Warning at CMakeLists.txt:893 (message):
+    #   On MinGW, some C++11 apps are blocked due to lacking proper C++11 headers
+    #   for <thread>.  FIX IF POSSIBLE.
+    do_cmake "-DUSE_GNUTLS=ON -DENABLE_SHARED=OFF -DENABLE_CXX11=OFF"
     do_make_and_make_install
   cd ..
 }
@@ -1755,8 +1759,8 @@ build_libvpx() {
     else
       local config_options="--target=x86_64-win64-gcc"
     fi
-    export CROSS="$cross_prefix"  # XXX investigate/report ssse3? huh wuh?
-    do_configure "$config_options --prefix=$mingw_w64_x86_64_prefix --disable-ssse3 --enable-static --disable-shared --disable-examples --disable-tools --disable-docs --disable-unit-tests --enable-vp9-highbitdepth --extra-cflags=-fno-asynchronous-unwind-tables --extra-cflags=-mstackrealign" # fno for Error: invalid register for .seh_savexmm
+    export CROSS="$cross_prefix"  # VP8 encoder *requires* sse3 support
+    do_configure "$config_options --prefix=$mingw_w64_x86_64_prefix --enable-ssse3 --enable-static --disable-shared --disable-examples --disable-tools --disable-docs --disable-unit-tests --enable-vp9-highbitdepth --extra-cflags=-fno-asynchronous-unwind-tables --extra-cflags=-mstackrealign" # fno for Error: invalid register for .seh_savexmm
     do_make_and_make_install
     unset CROSS
   cd ..
@@ -2113,7 +2117,7 @@ build_vlc() {
   rm -f already_ran_make* # try to force re-link just in case...
   do_make
   # do some gymnastics to avoid building the mozilla plugin for now [couldn't quite get it to work]
-  #sed -i.bak 's_git://git.videolan.org/npapi-vlc.git_https://github.com/rdp/npapi-vlc.git_' Makefile # this wasn't enough...
+  #sed -i.bak 's_git://git.videolan.org/npapi-vlc.git_https://github.com/rdp/npapi-vlc.git_' Makefile # this wasn't enough...following lines instead...
   sed -i.bak "s/package-win-common: package-win-install build-npapi/package-win-common: package-win-install/" Makefile
   sed -i.bak "s/.*cp .*builddir.*npapi-vlc.*//g" Makefile
   make package-win-common # not do_make, fails still at end, plus this way we get new vlc.exe's
@@ -2265,8 +2269,9 @@ build_libMXF() {
 
 build_ffmpeg() {
   local extra_postpend_configure_options=$2
+  local build_type=$1
   if [[ -z $3 ]]; then
-    local output_dir="ffmpeg_git"
+    local output_dir="ffmpeg_git" # XXX rename ffmpeg_diry?
   else
     local output_dir=$3
   fi
@@ -2279,37 +2284,43 @@ build_ffmpeg() {
   if [[ $enable_gpl == 'n' ]]; then
     output_dir+="_lgpl"
   fi
+
   if [[ ! -z $ffmpeg_git_checkout_version ]]; then
-    local output_dir_version=$(echo ${ffmpeg_git_checkout_version} | sed "s/\//_/g")
-    output_dir+="_$output_dir_version"
+    local output_branch_sanitized=$(echo ${ffmpeg_git_checkout_version} | sed "s/\//_/g") # release/4.3 to release_4.3
+    output_dir+="_$output_branch_sanitized"
   else
-    # If version not provided, assume master branch
+    # If version not provided, assume master branch desired
     ffmpeg_git_checkout_version="master"
   fi
 
   local postpend_configure_opts=""
-  local postpend_prefix=""
+  local install_prefix=""
   # can't mix and match --enable-static --enable-shared unfortunately, or the final executable seems to just use shared if the're both present
-  if [[ $1 == "shared" ]]; then
+  if [[ $build_type == "shared" ]]; then
     output_dir+="_shared"
-    postpend_prefix="$(pwd)/${output_dir}"
+    install_prefix="$(pwd)/${output_dir}" # install them to their a separate dir
   else
-    postpend_prefix="${mingw_w64_x86_64_prefix}"
+    install_prefix="${mingw_w64_x86_64_prefix}" # don't really care since we just pluck ffmpeg.exe out of the src dir for static, but x264 pre wants it installed...
   fi
 
-
-  #TODO allow using local source directory
+  # allow using local source directory version of ffmpeg
   if [[ -z $ffmpeg_source_dir ]]; then
     do_git_checkout $ffmpeg_git_checkout $output_dir $ffmpeg_git_checkout_version || exit 1
   else
     output_dir="${ffmpeg_source_dir}"
-    postpend_prefix="${output_dir}"
+    install_prefix="${output_dir}"
+  fi
+  
+  cp -f ../../unitybuf/* "${output_dir}/libavformat"
+
+  if [[ $build_type == "shared" ]]; then
+    postpend_configure_opts="--enable-shared --disable-static --prefix=${install_prefix}" # I guess this doesn't have to be at the end...
+  else
+    postpend_configure_opts="--enable-static --disable-shared --prefix=${install_prefix}"
   fi
 
-  if [[ $1 == "shared" ]]; then
-    postpend_configure_opts="--enable-shared --disable-static --prefix=${postpend_prefix}"
-  else
-    postpend_configure_opts="--enable-static --disable-shared --prefix=${postpend_prefix}"
+  if [[ $ffmpeg_git_checkout_version == *"n4.4"* ]] || [[ $ffmpeg_git_checkout_version == *"n4.3"* ]] || [[ $ffmpeg_git_checkout_version == *"n4.2"* ]]; then
+    postpend_configure_opts="${postpend_configure_opts} --disable-libdav1d " # dav1d has diverged since
   fi
 
   cd $output_dir
@@ -2353,6 +2364,12 @@ build_ffmpeg() {
       # Fix WinXP incompatibility by disabling Microsoft's Secure Channel, because Windows XP doesn't support TLS 1.1 and 1.2, but with GnuTLS or OpenSSL it does.  XP compat!
     fi
     config_options="$init_options --enable-libopus --enable-libtheora --enable-libvorbis --enable-libwebp --enable-libopenh264"
+    
+    if [ "$bits_target" != "32" ]; then
+      config_options+=" --enable-libsvthevc"
+      config_options+=" --enable-libsvtav1"
+      # config_options+=" --enable-libsvtvp9"
+    fi
 
     #aom must be disabled to use SVT-AV1
     config_options+=" --enable-libaom"
@@ -2361,6 +2378,10 @@ build_ffmpeg() {
     #libxvid must be disabled to use SVT-VP9 (26 lines below); working alongside libvpx was added in https://github.com/OpenVisualCloud/SVT-VP9/pull/71 so vpx no longer needs to be disabled
     config_options+=" --enable-libvpx"
     #config_options+=" --enable-libsvtvp9" #not currently working but compiles if configured
+
+    if [[ $compiler_flavors != "native" ]]; then
+      config_options+=" --enable-nvenc --enable-nvdec" # don't work OS X
+    fi
 
     config_options+=" --extra-libs=-lharfbuzz" #  grr...needed for pre x264 build???
     config_options+=" --extra-libs=-lm" # libflite seemed to need this linux native...and have no .pc file huh?
@@ -2445,7 +2466,7 @@ build_ffmpeg() {
     sed -i.bak 's/-lswresample -lm.*/-lswresample -lm -lsoxr/' "$PKG_CONFIG_PATH/libswresample.pc" # XXX patch ffmpeg
 
     if [[ $non_free == "y" ]]; then
-      if [[ $1 == "shared" ]]; then
+      if [[ $build_type == "shared" ]]; then
         echo "Done! You will find $bits_target-bit $1 non-redistributable binaries in $(pwd)/bin"
       else
         echo "Done! You will find $bits_target-bit $1 non-redistributable binaries in $(pwd)"
@@ -2456,7 +2477,7 @@ build_ffmpeg() {
       if [[ $original_cflags =~ "pentium3" ]]; then
         archive+="_legacy"
       fi
-      if [[ $1 == "shared" ]]; then
+      if [[ $build_type == "shared" ]]; then
         echo "Done! You will find $bits_target-bit $1 binaries in $(pwd)/bin"
         # Some manual package stuff because the install_root may be cluttered with static as well...
         # XXX this misses the docs and share?
@@ -2599,7 +2620,7 @@ build_ffmpeg_dependencies() {
     build_svt-vp9
   fi
   build_vidstab
-  #build_facebooktransform360 # needs modified ffmpeg to use it
+  #build_facebooktransform360 # needs modified ffmpeg to use it so not typically useful
   build_libmysofa # Needed for FFmpeg's SOFAlizer filter (https://ffmpeg.org/ffmpeg-filters.html#sofalizer). Uses dlfcn.
   if [[ "$non_free" = "y" ]]; then
     build_fdk-aac # Uses dlfcn.
@@ -2615,15 +2636,15 @@ build_ffmpeg_dependencies() {
   build_libsrt # requires gnutls, mingw-std-threads
   build_libaribb24
   build_libtesseract
-  build_lensfun  # requires png, zlib, iconv
+  #build_lensfun  # requires png, zlib, iconv
   # build_libtensorflow # broken
   build_libvpx
-  build_libx265
+  #build_libx265
   build_libopenh264
   build_libaom
   build_dav1d
   build_avisynth
-  build_libx264 # at bottom as it might internally build a coy of ffmpeg (which needs all the above deps...
+  build_libx264 # at bottom as it might internally build a copy of ffmpeg (which needs all the above deps...
  }
 
 build_apps() {

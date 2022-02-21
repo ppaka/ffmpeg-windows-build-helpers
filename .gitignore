@@ -17,3 +17,5 @@ meson-cross.mingw.txt
 /.vs/ffmpeg-windows-build-helpers/v16/Browse.VC.db-shm
 /.vs/ffmpeg-windows-build-helpers/v16/Browse.VC.db-wal
 /.vs/ffmpeg-windows-build-helpers/v16/Browse.VC.opendb
+
+fftools_lib/
