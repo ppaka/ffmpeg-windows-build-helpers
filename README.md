@@ -1,5 +1,7 @@
 This scripts is for '[FFmpeg for Unity](https://assetstore.unity.com/packages/tools/video/ffmpeg-for-unity-199811)'
 
+In addition to this, I'm using [THIS](https://github.com/NON906/fftools_lib) to build the library.
+
 NOTE: If you want to run this scripts and use binaries on IL2CPP, please add  [NamedPipeConnecter.exe](https://github.com/NON906/ffmpeg-windows-build-helpers/releases/download/1.0/NamedPipeConnecter.exe).
 
 Original README.md is follow:
