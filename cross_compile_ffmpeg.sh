@@ -582,7 +582,7 @@ do_meson() {
     fi
     local cur_dir2=$(pwd)
     local english_name=$(basename $cur_dir2)
-    local touch_name=$(get_small_touchfile_name already_built "$configure_options $configure_name $LDFLAGS $CFLAGS")
+    local touch_name=$(get_small_touchfile_name already_built_meson "$configure_options $configure_name $LDFLAGS $CFLAGS")
     if [ ! -f "$touch_name" ]; then
         if [ "$configure_noclean" != "noclean" ]; then
             make clean # just in case
@@ -1059,9 +1059,8 @@ build_libxml2() {
 }
 
 build_libvmaf() {
-  do_git_checkout https://github.com/Netflix/vmaf.git vmaf_git v1.5.2
+  do_git_checkout https://github.com/Netflix/vmaf.git vmaf_git v2.3.0
   cd vmaf_git
-    apply_patch file://$patch_dir/libvmaf.various-1.5.2.patch -p1
     cd libvmaf
     export CFLAGS="$CFLAGS -pthread"
     export CXXFLAGS="$CFLAGS -pthread"
@@ -1082,7 +1081,7 @@ build_libvmaf() {
     else
       rm -f ${mingw_w64_x86_64_prefix}/lib/libvmaf.dll.a
     fi
-    sed -i.bak "s/Libs.private.*/& -lstdc++/" "$PKG_CONFIG_PATH/libvmaf.pc" # .pc is still broken
+    sed -i.bak "s/Libs: .*/& -lstdc++/" "$PKG_CONFIG_PATH/libvmaf.pc" # .pc is still broken
   cd ../..
 }
 
@@ -1340,11 +1339,19 @@ build_libsndfile() {
   cd ..
 }
 
+build_mpg123() {
+  do_svn_checkout svn://scm.orgis.org/mpg123/trunk mpg123_svn
+  cd mpg123_svn
+    generic_configure
+    do_make_and_make_install
+  cd ..
+}
+
 build_lame() {
-  do_svn_checkout https://svn.code.sf.net/p/lame/svn/trunk/lame lame_svn r6474
+  do_svn_checkout https://svn.code.sf.net/p/lame/svn/trunk/lame lame_svn 
   cd lame_svn
     sed -i.bak '1s/^\xEF\xBB\xBF//' libmp3lame/i386/nasm.h # Remove a UTF-8 BOM that breaks nasm if it's still there; should be fixed in trunk eventually https://sourceforge.net/p/lame/patches/81/
-    generic_configure "--enable-nasm"
+    generic_configure "--enable-nasm --enable-libmpg123"
     do_make_and_make_install
   cd ..
 }
@@ -1805,7 +1812,7 @@ build_avisynth() {
   mkdir -p avisynth_git/avisynth-build
   cd avisynth_git/avisynth-build
     do_cmake_from_build_dir .. -DHEADERS_ONLY:bool=on
-    do_make_install
+    do_make "$make_prefix_options VersionGen install"
   cd ../..
 }
 
@@ -1815,12 +1822,14 @@ build_libx265() {
   if [[ ! -z $x265_git_checkout_version ]]; then
     checkout_dir+="_$x265_git_checkout_version"
     do_git_checkout "$remote" $checkout_dir "$x265_git_checkout_version"
-  fi
-  if [[ $prefer_stable = "n" ]] && [[ -z $x265_git_checkout_version ]] ; then
-    do_git_checkout "$remote" $checkout_dir "origin/master"
-  fi
-  if [[ $prefer_stable = "y" ]] && [[ -z $x265_git_checkout_version ]] ; then
-    do_git_checkout "$remote" $checkout_dir "origin/stable"
+  else
+    if [[ $prefer_stable = "n" ]]; then
+      checkout_dir+="_unstable"
+      do_git_checkout "$remote" $checkout_dir "origin/master"
+    fi
+    if [[ $prefer_stable = "y" ]]; then
+      do_git_checkout "$remote" $checkout_dir "origin/stable"
+    fi
   fi
   cd $checkout_dir
 
@@ -1874,7 +1883,7 @@ SAVE
 END
 EOF
   fi
-  do_make_install
+  make install # force reinstall in case changed stable -> unstable
   cd ../..
 }
 
@@ -1911,9 +1920,10 @@ build_libx264() {
   checkout_dir="${checkout_dir}_all_bitdepth"
 
   if [[ $prefer_stable = "n" ]]; then
-    do_git_checkout "https://code.videolan.org/videolan/x264.git" $checkout_dir "origin/master" # During 'configure': "Found no assembler. Minimum version is nasm-2.13" so disable for now...
+    checkout_dir="${checkout_dir}_unstable"
+    do_git_checkout "https://code.videolan.org/videolan/x264.git" $checkout_dir "origin/master" 
   else
-    do_git_checkout "https://code.videolan.org/videolan/x264.git" $checkout_dir  "origin/stable" # or "origin/stable" nasm again
+    do_git_checkout "https://code.videolan.org/videolan/x264.git" $checkout_dir  "origin/stable" 
   fi
   cd $checkout_dir
     if [[ ! -f configure.bak ]]; then # Change CFLAGS.
@@ -1944,7 +1954,7 @@ build_libx264() {
       # normal path non profile guided
       do_configure "$configure_flags"
       do_make
-      do_make_install
+      make install # force reinstall in case changed stable -> unstable
     fi
 
     unset LAVF_LIBS
@@ -2271,7 +2281,7 @@ build_ffmpeg() {
   local extra_postpend_configure_options=$2
   local build_type=$1
   if [[ -z $3 ]]; then
-    local output_dir="ffmpeg_git" # XXX rename ffmpeg_diry?
+    local output_dir="ffmpeg_git"
   else
     local output_dir=$3
   fi
@@ -2331,14 +2341,13 @@ build_ffmpeg() {
       # SVT-HEVC
       # Apply the correct patches based on version. Logic (n4.4 patch for n4.2, n4.3 and n4.4)  based on patch notes here:
       # https://github.com/OpenVisualCloud/SVT-HEVC/commit/b5587b09f44bcae70676f14d3bc482e27f07b773#diff-2b35e92117ba43f8397c2036658784ba2059df128c9b8a2625d42bc527dffea1
-      if [[ $ffmpeg_git_checkout_version == *"master"* ]]; then
-        git apply "$work_dir/SVT-HEVC_git/ffmpeg_plugin/master-0001-lavc-svt_hevc-add-libsvt-hevc-encoder-wrapper.patch"
-      elif [[ $ffmpeg_git_checkout_version == *"n4.4"* ]] || [[ $ffmpeg_git_checkout_version == *"n4.3"* ]] || [[ $ffmpeg_git_checkout_version == *"n4.2"* ]]; then
+      if [[ $ffmpeg_git_checkout_version == *"n4.4"* ]] || [[ $ffmpeg_git_checkout_version == *"n4.3"* ]] || [[ $ffmpeg_git_checkout_version == *"n4.2"* ]]; then
         git apply "$work_dir/SVT-HEVC_git/ffmpeg_plugin/n4.4-0001-lavc-svt_hevc-add-libsvt-hevc-encoder-wrapper.patch"
         git apply "$patch_dir/SVT-HEVC-0002-doc-Add-libsvt_hevc-encoder-docs.patch"  # upstream patch does not apply on current ffmpeg master
-      else
-        # PUT PATCHES FOR OTHER VERSIONS HERE
+      elif [[ $ffmpeg_git_checkout_version == *"n4.1"* ]] || [[ $ffmpeg_git_checkout_version == *"n3.4"* ]] || [[ $ffmpeg_git_checkout_version == *"n3.2"* ]] || [[ $ffmpeg_git_checkout_version == *"n2.8"* ]]; then
         :
+      else
+        git apply "$work_dir/SVT-HEVC_git/ffmpeg_plugin/master-0001-lavc-svt_hevc-add-libsvt-hevc-encoder-wrapper.patch"
       fi
 
     fi
@@ -2383,6 +2392,8 @@ build_ffmpeg() {
 
     config_options+=" --extra-libs=-lharfbuzz" #  grr...needed for pre x264 build???
     config_options+=" --extra-libs=-lm" # libflite seemed to need this linux native...and have no .pc file huh?
+    config_options+=" --extra-libs=-lshlwapi" # lame needed this, no .pc file?
+    config_options+=" --extra-libs=-lmpg123" # ditto
     config_options+=" --extra-libs=-lpthread" # for some reason various and sundry needed this linux native
 
     config_options+=" --extra-cflags=-DLIBTWOLAME_STATIC --extra-cflags=-DMODPLUG_STATIC --extra-cflags=-DCACA_STATIC" # if we ever do a git pull then it nukes changes, which overrides manual changes to configure, so just use these for now :|
@@ -2596,7 +2607,8 @@ build_ffmpeg_dependencies() {
   build_libspeex # Uses libspeexdsp and dlfcn.
   build_libtheora # Needs libogg >= 1.1. Needs libvorbis >= 1.0.1, sdl and libpng for test, programs and examples [disabled]. Uses dlfcn.
   build_libsndfile "install-libgsm" # Needs libogg >= 1.1.3 and libvorbis >= 1.2.3 for external support [disabled]. Uses dlfcn. 'build_libsndfile "install-libgsm"' to install the included LibGSM 6.10.
-  build_lame # Uses dlfcn.
+  build_mpg123
+  build_lame # Uses dlfcn, mpg123
   build_twolame # Uses libsndfile >= 1.0.0 and dlfcn.
   build_libopencore # Uses dlfcn.
   build_libilbc # Uses dlfcn.
