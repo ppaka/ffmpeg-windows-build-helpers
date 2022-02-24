@@ -582,7 +582,7 @@ do_meson() {
     fi
     local cur_dir2=$(pwd)
     local english_name=$(basename $cur_dir2)
-    local touch_name=$(get_small_touchfile_name already_built "$configure_options $configure_name $LDFLAGS $CFLAGS")
+    local touch_name=$(get_small_touchfile_name already_built_meson "$configure_options $configure_name $LDFLAGS $CFLAGS")
     if [ ! -f "$touch_name" ]; then
         if [ "$configure_noclean" != "noclean" ]; then
             make clean # just in case
@@ -1059,9 +1059,8 @@ build_libxml2() {
 }
 
 build_libvmaf() {
-  do_git_checkout https://github.com/Netflix/vmaf.git vmaf_git v1.5.2
+  do_git_checkout https://github.com/Netflix/vmaf.git vmaf_git v2.3.0
   cd vmaf_git
-    apply_patch file://$patch_dir/libvmaf.various-1.5.2.patch -p1
     cd libvmaf
     export CFLAGS="$CFLAGS -pthread"
     export CXXFLAGS="$CFLAGS -pthread"
@@ -1082,7 +1081,7 @@ build_libvmaf() {
     else
       rm -f ${mingw_w64_x86_64_prefix}/lib/libvmaf.dll.a
     fi
-    sed -i.bak "s/Libs.private.*/& -lstdc++/" "$PKG_CONFIG_PATH/libvmaf.pc" # .pc is still broken
+    sed -i.bak "s/Libs: .*/& -lstdc++/" "$PKG_CONFIG_PATH/libvmaf.pc" # .pc is still broken
   cd ../..
 }
 
@@ -1805,7 +1804,7 @@ build_avisynth() {
   mkdir -p avisynth_git/avisynth-build
   cd avisynth_git/avisynth-build
     do_cmake_from_build_dir .. -DHEADERS_ONLY:bool=on
-    do_make_install
+    do_make "$make_prefix_options VersionGen install"
   cd ../..
 }
 
@@ -1815,12 +1814,14 @@ build_libx265() {
   if [[ ! -z $x265_git_checkout_version ]]; then
     checkout_dir+="_$x265_git_checkout_version"
     do_git_checkout "$remote" $checkout_dir "$x265_git_checkout_version"
-  fi
-  if [[ $prefer_stable = "n" ]] && [[ -z $x265_git_checkout_version ]] ; then
-    do_git_checkout "$remote" $checkout_dir "origin/master"
-  fi
-  if [[ $prefer_stable = "y" ]] && [[ -z $x265_git_checkout_version ]] ; then
-    do_git_checkout "$remote" $checkout_dir "origin/stable"
+  else
+    if [[ $prefer_stable = "n" ]]; then
+      checkout_dir+="_unstable"
+      do_git_checkout "$remote" $checkout_dir "origin/master"
+    fi
+    if [[ $prefer_stable = "y" ]]; then
+      do_git_checkout "$remote" $checkout_dir "origin/stable"
+    fi
   fi
   cd $checkout_dir
 
@@ -1874,7 +1875,7 @@ SAVE
 END
 EOF
   fi
-  do_make_install
+  make install # force reinstall in case changed stable -> unstable
   cd ../..
 }
 
@@ -1911,9 +1912,10 @@ build_libx264() {
   checkout_dir="${checkout_dir}_all_bitdepth"
 
   if [[ $prefer_stable = "n" ]]; then
-    do_git_checkout "https://code.videolan.org/videolan/x264.git" $checkout_dir "origin/master" # During 'configure': "Found no assembler. Minimum version is nasm-2.13" so disable for now...
+    checkout_dir="${checkout_dir}_unstable"
+    do_git_checkout "https://code.videolan.org/videolan/x264.git" $checkout_dir "origin/master" 
   else
-    do_git_checkout "https://code.videolan.org/videolan/x264.git" $checkout_dir  "origin/stable" # or "origin/stable" nasm again
+    do_git_checkout "https://code.videolan.org/videolan/x264.git" $checkout_dir  "origin/stable" 
   fi
   cd $checkout_dir
     if [[ ! -f configure.bak ]]; then # Change CFLAGS.
@@ -1944,7 +1946,7 @@ build_libx264() {
       # normal path non profile guided
       do_configure "$configure_flags"
       do_make
-      do_make_install
+      make install # force reinstall in case changed stable -> unstable
     fi
 
     unset LAVF_LIBS
@@ -2271,7 +2273,7 @@ build_ffmpeg() {
   local extra_postpend_configure_options=$2
   local build_type=$1
   if [[ -z $3 ]]; then
-    local output_dir="ffmpeg_git" # XXX rename ffmpeg_diry?
+    local output_dir="ffmpeg_git"
   else
     local output_dir=$3
   fi
@@ -2312,6 +2314,10 @@ build_ffmpeg() {
   fi
   
   cp -f ../../unitybuf/* "${output_dir}/libavformat"
+  grep -q "unitybuf" "${output_dir}/libavformat/Makefile"
+  if [ $? != 0 ]; then
+    sed -i -e "s/version\.h/version\.h unitybuf\.h/" -e "s/unix\.o/unix\.o\nOBJS\-\$\(CONFIG_UNITYBUF_PROTOCOL\)         \+\= unitybuf\.o unitybuf_protocol\.o/" "${output_dir}/libavformat/Makefile"
+  fi
 
   if [[ $build_type == "shared" ]]; then
     postpend_configure_opts="--enable-shared --disable-static --prefix=${install_prefix}" # I guess this doesn't have to be at the end...
@@ -2333,14 +2339,13 @@ build_ffmpeg() {
       # SVT-HEVC
       # Apply the correct patches based on version. Logic (n4.4 patch for n4.2, n4.3 and n4.4)  based on patch notes here:
       # https://github.com/OpenVisualCloud/SVT-HEVC/commit/b5587b09f44bcae70676f14d3bc482e27f07b773#diff-2b35e92117ba43f8397c2036658784ba2059df128c9b8a2625d42bc527dffea1
-      if [[ $ffmpeg_git_checkout_version == *"master"* ]]; then
-        git apply "$work_dir/SVT-HEVC_git/ffmpeg_plugin/master-0001-lavc-svt_hevc-add-libsvt-hevc-encoder-wrapper.patch"
-      elif [[ $ffmpeg_git_checkout_version == *"n4.4"* ]] || [[ $ffmpeg_git_checkout_version == *"n4.3"* ]] || [[ $ffmpeg_git_checkout_version == *"n4.2"* ]]; then
+      if [[ $ffmpeg_git_checkout_version == *"n4.4"* ]] || [[ $ffmpeg_git_checkout_version == *"n4.3"* ]] || [[ $ffmpeg_git_checkout_version == *"n4.2"* ]]; then
         git apply "$work_dir/SVT-HEVC_git/ffmpeg_plugin/n4.4-0001-lavc-svt_hevc-add-libsvt-hevc-encoder-wrapper.patch"
         git apply "$patch_dir/SVT-HEVC-0002-doc-Add-libsvt_hevc-encoder-docs.patch"  # upstream patch does not apply on current ffmpeg master
-      else
-        # PUT PATCHES FOR OTHER VERSIONS HERE
+      elif [[ $ffmpeg_git_checkout_version == *"n4.1"* ]] || [[ $ffmpeg_git_checkout_version == *"n3.4"* ]] || [[ $ffmpeg_git_checkout_version == *"n3.2"* ]] || [[ $ffmpeg_git_checkout_version == *"n2.8"* ]]; then
         :
+      else
+        git apply "$work_dir/SVT-HEVC_git/ffmpeg_plugin/master-0001-lavc-svt_hevc-add-libsvt-hevc-encoder-wrapper.patch"
       fi
 
     fi
@@ -2363,7 +2368,7 @@ build_ffmpeg() {
       init_options+=" --disable-schannel"
       # Fix WinXP incompatibility by disabling Microsoft's Secure Channel, because Windows XP doesn't support TLS 1.1 and 1.2, but with GnuTLS or OpenSSL it does.  XP compat!
     fi
-    config_options="$init_options --enable-libopus --enable-libtheora --enable-libvorbis --enable-libwebp --enable-libopenh264"
+    config_options="$init_options --enable-libopus --enable-libtheora --enable-libvorbis --enable-libwebp --enable-libopenh264 --enable-gmp --enable-gnutls"
     
     if [ "$bits_target" != "32" ]; then
       config_options+=" --enable-libsvthevc"

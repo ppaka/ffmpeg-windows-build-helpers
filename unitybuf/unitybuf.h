@@ -24,8 +24,8 @@ typedef struct {
     int flags;
     size_t read_position;
     int clear_count;
-    atomic_int is_lock;
     size_t max_count;
+    atomic_flag is_lock;
 } UnitybufStates;
 
 typedef struct {
