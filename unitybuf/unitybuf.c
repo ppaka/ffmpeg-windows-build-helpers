@@ -265,20 +265,35 @@ static int remove_datas(UnitybufStates *priv_data, int del_count) {
     return 0;
 }
 
+static int unitybuf_count(UnitybufStates *handle) {
+    if (handle->data_size <= 0) {
+        int ret = handle->count;
+        return ret;
+    }
+    else {
+        if (handle->count <= 0) {
+            return 0;
+        }
+        int all_size = handle->data_lengths[0] - handle->read_position;
+        for (int loop = 1; loop < handle->count; loop++) {
+            all_size += handle->data_lengths[loop];
+        }
+        return all_size / handle->data_size;
+    }
+    return 0;
+}
+
 static int unitybuf_write_inner(UnitybufStates *priv_data, const unsigned char *buf, int size) {
-    if (priv_data->clear_count > 0) {
-        return 0;
+    if (priv_data->clear_count > 0 && unitybuf_count(priv_data) <= 0) {
+        return AVERROR_EOF;
     }
     if (size <= 0) {
         return 0;
     }
 
-    int del_count = priv_data->count - priv_data->max_count;
+    int del_count = unitybuf_count(priv_data) - priv_data->max_count;
     if (del_count > 0) {
-        int remove_result = remove_datas(priv_data, del_count);
-        if (remove_result < 0) {
-            return remove_result;
-        }
+        return AVERROR(EAGAIN);
     }
 
     uint8_t *new_data;
@@ -343,29 +358,7 @@ DLL_EXPORT int unitybuf_write_dll(UnitybufStates *priv_data, const unsigned char
     return ret;
 }
 
-static int unitybuf_count(UnitybufStates *handle) {
-    if (handle->data_size <= 0) {
-        int ret = handle->count;
-        return ret;
-    }
-    else {
-        if (handle->count <= 0) {
-            return 0;
-        }
-        int all_size = handle->data_lengths[0] - handle->read_position;
-        for (int loop = 1; loop < handle->count; loop++) {
-            all_size += handle->data_lengths[loop];
-        }
-        return all_size / handle->data_size;
-    }
-    return 0;
-}
-
 static int unitybuf_read_inner(UnitybufStates *priv_data, unsigned char *buf, int size) {
-    if (priv_data->clear_count > 1 || (priv_data->clear_count > 0 && unitybuf_count(priv_data) <= 0)) {
-        return AVERROR_EOF;
-    } 
-
     if (priv_data->data_size <= 0) {
         if (size <= 0 || priv_data->count <= 0) {
             return AVERROR(EAGAIN);
@@ -435,7 +428,13 @@ DLL_EXPORT int unitybuf_read(URLContext *h, unsigned char *buf, int size) {
     if (lock_ret < 0) {
         return lock_ret;
     }
-    int ret = unitybuf_read_inner(priv_data, buf, size);
+    int ret;
+    if (priv_data->clear_count > 0 && unitybuf_count(priv_data) <= 0) {
+        ret = AVERROR_EOF;
+    }
+    else { 
+        ret = unitybuf_read_inner(priv_data, buf, size);
+    }
     local_unlock(priv_data);
     if (ret == AVERROR(EAGAIN)) {
         av_usleep(1);
@@ -451,7 +450,12 @@ DLL_EXPORT int unitybuf_read_dll(UnitybufStates *priv_data, unsigned char *buf, 
         if (lock_ret < 0) {
             return lock_ret;
         }
-        ret = unitybuf_read_inner(priv_data, buf, size);
+        if (priv_data->clear_count > 0 && unitybuf_count(priv_data) <= 0) {
+            ret = AVERROR_EOF;
+        }
+        else { 
+            ret = unitybuf_read_inner(priv_data, buf, size);
+        }
         local_unlock(priv_data);
     }
 
