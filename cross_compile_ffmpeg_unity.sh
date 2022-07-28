@@ -2368,10 +2368,10 @@ build_ffmpeg() {
       init_options+=" --disable-schannel"
       # Fix WinXP incompatibility by disabling Microsoft's Secure Channel, because Windows XP doesn't support TLS 1.1 and 1.2, but with GnuTLS or OpenSSL it does.  XP compat!
     fi
-    config_options="$init_options --enable-libopus --enable-libtheora --enable-libvorbis --enable-libwebp --enable-libopenh264 --enable-gmp --enable-gnutls"
+    config_options="$init_options --enable-libopus --enable-libtheora --enable-libvorbis --enable-libwebp --enable-libopenh264 --enable-gmp --enable-gnutls --enable-libmp3lame"
     
     if [ "$bits_target" != "32" ]; then
-      config_options+=" --enable-libsvthevc"
+      #config_options+=" --enable-libsvthevc"
       config_options+=" --enable-libsvtav1"
       # config_options+=" --enable-libsvtvp9"
     fi
@@ -2574,7 +2574,7 @@ build_ffmpeg_dependencies() {
     build_intel_quicksync_mfx
   fi
   build_nv_headers
-  build_libzimg # Uses dlfcn.
+  #build_libzimg # Uses dlfcn.
   build_libopenjpeg
   build_glew
   build_glfw
