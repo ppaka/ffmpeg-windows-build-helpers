@@ -2,6 +2,8 @@
 #include <string.h>
 #include "libavutil/avstring.h"
 #include "libavutil/time.h"
+#include "libavutil/mem.h"
+#include "libavutil/error.h"
 #include "unitybuf.h"
 
 static UnitybufStates **g_all_contexts;
