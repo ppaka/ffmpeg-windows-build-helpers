@@ -1608,7 +1608,7 @@ build_svt-hevc() {
 }
 
 build_svt-av1() {
-  do_git_checkout https://github.com/OpenVisualCloud/SVT-AV1.git
+  do_git_checkout https://gitlab.com/AOMediaCodec/SVT-AV1.git
   cd SVT-AV1_git
   cd Build
     do_cmake_from_build_dir .. "-DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_PROCESSOR=AMD64"
@@ -1633,7 +1633,7 @@ build_vidstab() {
 }
 
 build_libmysofa() {
-  do_git_checkout https://github.com/hoene/libmysofa.git libmysofa_git
+  do_git_checkout https://github.com/hoene/libmysofa.git libmysofa_git "origin/main"
   cd libmysofa_git
     local cmake_params="-DBUILD_TESTS=0"
     if [[ $compiler_flavors == "native" ]]; then
@@ -2242,10 +2242,9 @@ build_mp4box() { # like build_gpac
   cd mp4box_gpac_git
     # are these tweaks needed? If so then complain to the mp4box people about it?
     sed -i.bak "s/has_dvb4linux=\"yes\"/has_dvb4linux=\"no\"/g" configure
-    sed -i.bak "s/`uname -s`/MINGW32/g" configure
     # XXX do I want to disable more things here?
     # ./sandbox/cross_compilers/mingw-w64-i686/bin/i686-w64-mingw32-sdl-config
-    generic_configure "  --cross-prefix=${cross_prefix} --static-build --static-bin --disable-oss-audio --extra-ldflags=-municode --disable-x11 --sdl-cfg=${cross_prefix}sdl-config"
+    generic_configure "  --cross-prefix=${cross_prefix} --target-os=MINGW32 --extra-cflags=-Wno-format --static-build --static-bin --disable-oss-audio --extra-ldflags=-municode --disable-x11 --sdl-cfg=${cross_prefix}sdl-config"
     ./check_revision.sh
     # I seem unable to pass 3 libs into the same config line so do it with sed...
     sed -i.bak "s/EXTRALIBS=.*/EXTRALIBS=-lws2_32 -lwinmm -lz/g" config.mak
@@ -2383,12 +2382,8 @@ build_ffmpeg() {
         fi
         config_options+=" --enable-libsvthevc"
         config_options+=" --enable-libsvtav1"
-        # config_options+=" --enable-libsvtvp9"
-        #aom must be disabled to use SVT-AV1, just below
-        #config_options+=" --enable-libsvtav1" #not currently working but compiles if configured
-
-        #config_options+=" --enable-libvpx"
-        #config_options+=" --enable-libsvtvp9" #not currently working but compiles if configured
+        # config_options+=" --enable-libsvtvp9" #not currently working but compiles if configured
+        config_options+=" --enable-libvpx"
       fi # else doesn't work/matter with 32 bit
     fi
     config_options+=" --enable-libaom"
