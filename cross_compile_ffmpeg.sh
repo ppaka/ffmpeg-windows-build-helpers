@@ -2390,10 +2390,11 @@ build_ffmpeg() {
         config_options+=" --enable-libsvthevc"
         config_options+=" --enable-libsvtav1"
         # config_options+=" --enable-libsvtvp9" #not currently working but compiles if configured
-        config_options+=" --enable-libvpx"
+        #config_options+=" --enable-libvpx"
       fi # else doesn't work/matter with 32 bit
     fi
     config_options+=" --enable-libaom"
+    config_options+=" --enable-libvpx"
 
     if [[ $compiler_flavors != "native" ]]; then
       config_options+=" --enable-nvenc --enable-nvdec" # don't work OS X
