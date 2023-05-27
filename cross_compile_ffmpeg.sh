@@ -1893,21 +1893,29 @@ EOF
 }
 
 build_libopenh264() {
-  do_git_checkout "https://github.com/cisco/openh264.git" openh264_git 75b9fcd2669c75a99791 # wels/codec_api.h weirdness
+  do_git_checkout "https://github.com/cisco/openh264.git" openh264_git v2.3.1 
   cd openh264_git
-    sed -i.bak "s/_M_X64/_M_DISABLED_X64/" codec/encoder/core/inc/param_svc.h # for 64 bit, avoid missing _set_FMA3_enable, it needed to link against msvcrt120 to get this or something weird?
     if [[ $bits_target == 32 ]]; then
       local arch=i686 # or x86?
     else
       local arch=x86_64
     fi
     if [[ $compiler_flavors == "native" ]]; then
-      # No need for 'do_make_install', because 'install-static' already has install-instructions. we want install static so no shared built...
-      do_make "$make_prefix_options ASM=yasm install-static"
+      do_make "$make_prefix_options ASM=yasm install-headers openh264.pc"
     else
-      do_make "$make_prefix_options OS=mingw_nt ARCH=$arch ASM=yasm install-static"
+      do_make "$make_prefix_options OS=mingw_nt ARCH=$arch ASM=yasm install-headers openh264.pc"
     fi
+    install -m 644 openh264.pc $PKG_CONFIG_PATH
   cd ..
+  if [[ $bits_target == 32 ]]; then
+    curl -o ./openh264-2.3.1-win32.dll.bz2 http://ciscobinary.openh264.org/openh264-2.3.1-win32.dll.bz2
+    bunzip2 openh264-2.3.1-win32.dll.bz2
+    cp openh264-2.3.1-win32.dll $mingw_w64_x86_64_prefix/lib/openh264.dll
+  else
+    curl -o ./openh264-2.3.1-win64.dll.bz2 http://ciscobinary.openh264.org/openh264-2.3.1-win64.dll.bz2
+    bunzip2 openh264-2.3.1-win64.dll.bz2
+    cp openh264-2.3.1-win64.dll $mingw_w64_x86_64_prefix/lib/openh264.dll
+  fi
 }
 
 build_libx264() {
@@ -2367,7 +2375,7 @@ build_ffmpeg() {
       # Fix WinXP incompatibility by disabling Microsoft's Secure Channel, because Windows XP doesn't support TLS 1.1 and 1.2, but with GnuTLS or OpenSSL it does.  XP compat!
     fi
     #config_options="$init_options --enable-libcaca --enable-gray --enable-libtesseract --enable-fontconfig --enable-gmp --enable-gnutls --enable-libass --enable-libbluray --enable-libbs2b --enable-libflite --enable-libfreetype --enable-libfribidi --enable-libgme --enable-libgsm --enable-libilbc --enable-libmodplug --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libtheora --enable-libtwolame --enable-libvo-amrwbenc --enable-libvorbis --enable-libwebp --enable-libzimg --enable-libzvbi --enable-libmysofa --enable-libopenjpeg  --enable-libopenh264  --enable-libvmaf --enable-libsrt --enable-libxml2 --enable-opengl --enable-libdav1d --enable-cuda-llvm"
-    config_options="$init_options --enable-libopus --enable-libtheora --enable-libvorbis --enable-libwebp --enable-libopenh264 --enable-gmp --enable-gnutls --enable-libmp3lame"
+    config_options="$init_options --enable-libopus --enable-libtheora --enable-libvorbis --enable-libwebp --enable-libopenh264 --enable-gmp --enable-gnutls --enable-libmp3lame --enable-libxml2"
 
     if [[ $build_svt = y ]]; then
       if [ "$bits_target" != "32" ]; then
@@ -2662,7 +2670,7 @@ build_ffmpeg_dependencies() {
   build_lensfun  # requires png, zlib, iconv
   # build_libtensorflow # broken
   build_libvpx
-  build_libx265
+  #build_libx265
   build_libopenh264
   build_libaom
   build_dav1d
