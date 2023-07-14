@@ -847,7 +847,7 @@ build_amd_amf_headers() {
 }
 
 build_nv_headers() {
-  do_git_checkout https://github.com/FFmpeg/nv-codec-headers.git
+  do_git_checkout https://github.com/FFmpeg/nv-codec-headers.git nv-codec-headers_git n12.0.16.0
   cd nv-codec-headers_git
     do_make_install "PREFIX=$mingw_w64_x86_64_prefix" # just copies in headers
   cd ..
@@ -1612,7 +1612,7 @@ build_svt-hevc() {
 }
 
 build_svt-av1() {
-  do_git_checkout https://gitlab.com/AOMediaCodec/SVT-AV1.git
+  do_git_checkout https://gitlab.com/AOMediaCodec/SVT-AV1.git SVT-AV1_git v1.4.0
   cd SVT-AV1_git
   cd Build
     do_cmake_from_build_dir .. "-DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_PROCESSOR=AMD64"
@@ -2425,7 +2425,7 @@ build_ffmpeg() {
     else
       config_options+=" --disable-libmfx"
     fi
-    config_options+=" --enable-libaribcaption" # libaribcatption (MIT licensed)
+    #config_options+=" --enable-libaribcaption" # libaribcatption (MIT licensed)
     if [[ $enable_gpl == 'y' ]]; then
       config_options+=" --enable-gpl --enable-frei0r --enable-librubberband --enable-libvidstab --enable-libx264 --enable-libx265 --enable-avisynth --enable-libaribb24"
       config_options+=" --enable-libxvid --enable-libdavs2"
@@ -2559,7 +2559,7 @@ find_all_build_exes() {
     found="$found $(readlink -f $file)"
   done
 
-  # bash recursive glob fails here again?
+  # bash recursive glob fails here again?nv
   for file in `find . -name vlc.exe | grep -- -`; do
     found="$found $(readlink -f $file)"
   done
