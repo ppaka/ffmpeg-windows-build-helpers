@@ -2377,7 +2377,7 @@ build_ffmpeg() {
       # Fix WinXP incompatibility by disabling Microsoft's Secure Channel, because Windows XP doesn't support TLS 1.1 and 1.2, but with GnuTLS or OpenSSL it does.  XP compat!
     fi
     #config_options="$init_options --enable-libcaca --enable-gray --enable-libtesseract --enable-fontconfig --enable-gmp --enable-gnutls --enable-libass --enable-libbluray --enable-libbs2b --enable-libflite --enable-libfreetype --enable-libfribidi --enable-libgme --enable-libgsm --enable-libilbc --enable-libmodplug --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libtheora --enable-libtwolame --enable-libvo-amrwbenc --enable-libvorbis --enable-libwebp --enable-libzimg --enable-libzvbi --enable-libmysofa --enable-libopenjpeg  --enable-libopenh264  --enable-libvmaf --enable-libsrt --enable-libxml2 --enable-opengl --enable-libdav1d --enable-cuda-llvm"
-    config_options="$init_options --enable-libopus --enable-libtheora --enable-libvorbis --enable-libwebp --enable-libopenh264 --enable-gmp --enable-gnutls --enable-libmp3lame --enable-libxml2"
+    config_options="$init_options --enable-libopus --enable-libtheora --enable-libvorbis --enable-libwebp --enable-libopenh264 --enable-gmp --enable-gnutls --enable-libmp3lame --enable-libxml2 --enable-libzimg"
 
     if [[ "$bits_target" != "32" ]]; then
       if [[ $build_svt_hevc = y ]]; then
@@ -2643,7 +2643,7 @@ build_ffmpeg_dependencies() {
   build_fftw # Uses dlfcn.
   build_libsamplerate # Needs libsndfile >= 1.0.6 and fftw >= 0.15.0 for tests. Uses dlfcn.
   build_librubberband # Needs libsamplerate, libsndfile, fftw and vamp_plugin. 'configure' will fail otherwise. Eventhough librubberband doesn't necessarily need them (libsndfile only for 'rubberband.exe' and vamp_plugin only for "Vamp audio analysis plugin"). How to use the bundled libraries '-DUSE_SPEEX' and '-DUSE_KISSFFT'?
-  build_frei0r # Needs dlfcn. could use opencv...
+  #build_frei0r # Needs dlfcn. could use opencv...
   if [[ "$bits_target" != "32" ]]; then
     if [[ $build_svt_hevc = y ]]; then
       build_svt-hevc
