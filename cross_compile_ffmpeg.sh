@@ -847,7 +847,12 @@ build_amd_amf_headers() {
 }
 
 build_nv_headers() {
-  do_git_checkout https://github.com/FFmpeg/nv-codec-headers.git nv-codec-headers_git n12.0.16.0
+  if [[ $ffmpeg_git_checkout_version == *"n6.0"* ]] || [[ $ffmpeg_git_checkout_version == *"n5.1"* ]] || [[ $ffmpeg_git_checkout_version == *"n5.0"* ]] || [[ $ffmpeg_git_checkout_version == *"n4.4"* ]] || [[ $ffmpeg_git_checkout_version == *"n4.3"* ]] || [[ $ffmpeg_git_checkout_version == *"n4.2"* ]] || [[ $ffmpeg_git_checkout_version == *"n4.1"* ]] || [[ $ffmpeg_git_checkout_version == *"n3.4"* ]] || [[ $ffmpeg_git_checkout_version == *"n3.2"* ]] || [[ $ffmpeg_git_checkout_version == *"n2.8"* ]]; then
+    # nv_headers for old versions
+    do_git_checkout https://github.com/FFmpeg/nv-codec-headers.git nv-codec-headers_git n12.0.16.1
+  else
+    do_git_checkout https://github.com/FFmpeg/nv-codec-headers.git
+  fi
   cd nv-codec-headers_git
     do_make_install "PREFIX=$mingw_w64_x86_64_prefix" # just copies in headers
   cd ..
@@ -1329,7 +1334,6 @@ build_libtheora() {
 build_libsndfile() {
   do_git_checkout https://github.com/libsndfile/libsndfile.git
   cd libsndfile_git
-    apply_patch file://$patch_dir/libsndfile.diff -p1
     generic_configure "--disable-sqlite --disable-external-libs --disable-full-suite"
     do_make_and_make_install
     if [ "$1" = "install-libgsm" ]; then
@@ -1577,8 +1581,10 @@ build_librubberband() {
 }
 
 build_frei0r() {
-  do_git_checkout https://github.com/dyne/frei0r.git
-  cd frei0r_git
+  #do_git_checkout https://github.com/dyne/frei0r.git
+  #cd frei0r_git
+  download_and_unpack_file https://github.com/dyne/frei0r/archive/refs/tags/v2.3.0.tar.gz frei0r-2.3.0
+  cd frei0r-2.3.0
     sed -i.bak 's/-arch i386//' CMakeLists.txt # OS X https://github.com/dyne/frei0r/issues/64
     do_cmake_and_install "-DWITHOUT_OPENCV=1" # XXX could look at this more...
 
@@ -1612,7 +1618,7 @@ build_svt-hevc() {
 }
 
 build_svt-av1() {
-  do_git_checkout https://gitlab.com/AOMediaCodec/SVT-AV1.git SVT-AV1_git v1.4.0
+  do_git_checkout https://gitlab.com/AOMediaCodec/SVT-AV1.git
   cd SVT-AV1_git
   cd Build
     do_cmake_from_build_dir .. "-DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_PROCESSOR=AMD64"
@@ -1656,7 +1662,14 @@ build_libcaca() {
 }
 
 build_libdecklink() {
-  do_git_checkout https://notabug.org/RiCON/decklink-headers.git
+  local url=https://notabug.org/RiCON/decklink-headers.git
+  git ls-remote $url
+  if [ $? -ne 0 ]; then
+    # If NotABug.org server is down , Change to use GitLab.com .
+    # https://gitlab.com/m-ab-s/decklink-headers
+    url=https://gitlab.com/m-ab-s/decklink-headers.git
+  fi
+  do_git_checkout $url
   cd decklink-headers_git
     do_make_install PREFIX=$mingw_w64_x86_64_prefix
   cd ..
@@ -1896,29 +1909,21 @@ EOF
 }
 
 build_libopenh264() {
-  do_git_checkout "https://github.com/cisco/openh264.git" openh264_git v2.3.1 
+  do_git_checkout "https://github.com/cisco/openh264.git" openh264_git 75b9fcd2669c75a99791 # wels/codec_api.h weirdness
   cd openh264_git
+    sed -i.bak "s/_M_X64/_M_DISABLED_X64/" codec/encoder/core/inc/param_svc.h # for 64 bit, avoid missing _set_FMA3_enable, it needed to link against msvcrt120 to get this or something weird?
     if [[ $bits_target == 32 ]]; then
       local arch=i686 # or x86?
     else
       local arch=x86_64
     fi
     if [[ $compiler_flavors == "native" ]]; then
-      do_make "$make_prefix_options ASM=yasm install-headers openh264.pc"
+      # No need for 'do_make_install', because 'install-static' already has install-instructions. we want install static so no shared built...
+      do_make "$make_prefix_options ASM=yasm install-static"
     else
-      do_make "$make_prefix_options OS=mingw_nt ARCH=$arch ASM=yasm install-headers openh264.pc"
+      do_make "$make_prefix_options OS=mingw_nt ARCH=$arch ASM=yasm install-static"
     fi
-    install -m 644 openh264.pc $PKG_CONFIG_PATH
   cd ..
-  if [[ $bits_target == 32 ]]; then
-    curl -o ./openh264-2.3.1-win32.dll.bz2 http://ciscobinary.openh264.org/openh264-2.3.1-win32.dll.bz2
-    bunzip2 openh264-2.3.1-win32.dll.bz2
-    cp openh264-2.3.1-win32.dll $mingw_w64_x86_64_prefix/lib/openh264.dll
-  else
-    curl -o ./openh264-2.3.1-win64.dll.bz2 http://ciscobinary.openh264.org/openh264-2.3.1-win64.dll.bz2
-    bunzip2 openh264-2.3.1-win64.dll.bz2
-    cp openh264-2.3.1-win64.dll $mingw_w64_x86_64_prefix/lib/openh264.dll
-  fi
 }
 
 build_libx264() {
@@ -2339,12 +2344,6 @@ build_ffmpeg() {
     install_prefix="${output_dir}"
   fi
 
-  cp -f ../../unitybuf/* "${output_dir}/libavformat"
-  grep -q "unitybuf" "${output_dir}/libavformat/Makefile"
-  if [ $? != 0 ]; then
-    sed -i -e "s/version\.h/version\.h unitybuf\.h/" -e "s/unix\.o/unix\.o\nOBJS\-\$\(CONFIG_UNITYBUF_PROTOCOL\)         \+\= unitybuf\.o unitybuf_protocol\.o/" "${output_dir}/libavformat/Makefile"
-  fi
-
   if [[ $build_type == "shared" ]]; then
     postpend_configure_opts="--enable-shared --disable-static --prefix=${install_prefix}" # I guess this doesn't have to be at the end...
   else
@@ -2376,8 +2375,7 @@ build_ffmpeg() {
       init_options+=" --disable-schannel"
       # Fix WinXP incompatibility by disabling Microsoft's Secure Channel, because Windows XP doesn't support TLS 1.1 and 1.2, but with GnuTLS or OpenSSL it does.  XP compat!
     fi
-    #config_options="$init_options --enable-libcaca --enable-gray --enable-libtesseract --enable-fontconfig --enable-gmp --enable-gnutls --enable-libass --enable-libbluray --enable-libbs2b --enable-libflite --enable-libfreetype --enable-libfribidi --enable-libgme --enable-libgsm --enable-libilbc --enable-libmodplug --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libtheora --enable-libtwolame --enable-libvo-amrwbenc --enable-libvorbis --enable-libwebp --enable-libzimg --enable-libzvbi --enable-libmysofa --enable-libopenjpeg  --enable-libopenh264  --enable-libvmaf --enable-libsrt --enable-libxml2 --enable-opengl --enable-libdav1d --enable-cuda-llvm"
-    config_options="$init_options --enable-libopus --enable-libtheora --enable-libvorbis --enable-libwebp --enable-libopenh264 --enable-gmp --enable-gnutls --enable-libmp3lame --enable-libxml2 --enable-libzimg"
+    config_options="$init_options --enable-libcaca --enable-gray --enable-libtesseract --enable-fontconfig --enable-gmp --enable-libass --enable-libbluray --enable-libbs2b --enable-libflite --enable-libfreetype --enable-libfribidi --enable-libgme --enable-libgsm --enable-libilbc --enable-libmodplug --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libtheora --enable-libtwolame --enable-libvo-amrwbenc --enable-libvorbis --enable-libwebp --enable-libzimg --enable-libzvbi --enable-libmysofa --enable-libopenjpeg  --enable-libopenh264  --enable-libvmaf --enable-libsrt --enable-libxml2 --enable-opengl --enable-libdav1d --enable-cuda-llvm  --enable-gnutls"
 
     if [[ "$bits_target" != "32" ]]; then
       if [[ $build_svt_hevc = y ]]; then
@@ -2425,7 +2423,12 @@ build_ffmpeg() {
     else
       config_options+=" --disable-libmfx"
     fi
-    #config_options+=" --enable-libaribcaption" # libaribcatption (MIT licensed)
+    
+    if [[ $ffmpeg_git_checkout_version != *"n6.0"* ]] && [[ $ffmpeg_git_checkout_version != *"n5.1"* ]] && [[ $ffmpeg_git_checkout_version != *"n5.0"* ]] && [[ $ffmpeg_git_checkout_version != *"n4.4"* ]] && [[ $ffmpeg_git_checkout_version != *"n4.3"* ]] && [[ $ffmpeg_git_checkout_version != *"n4.2"* ]] && [[ $ffmpeg_git_checkout_version != *"n4.1"* ]] && [[ $ffmpeg_git_checkout_version != *"n3.4"* ]] && [[ $ffmpeg_git_checkout_version != *"n3.2"* ]] && [[ $ffmpeg_git_checkout_version != *"n2.8"* ]]; then
+      # Disable libaribcatption on old versions
+      config_options+=" --enable-libaribcaption" # libaribcatption (MIT licensed)
+    fi
+    
     if [[ $enable_gpl == 'y' ]]; then
       config_options+=" --enable-gpl --enable-frei0r --enable-librubberband --enable-libvidstab --enable-libx264 --enable-libx265 --enable-avisynth --enable-libaribb24"
       config_options+=" --enable-libxvid --enable-libdavs2"
@@ -2559,7 +2562,7 @@ find_all_build_exes() {
     found="$found $(readlink -f $file)"
   done
 
-  # bash recursive glob fails here again?nv
+  # bash recursive glob fails here again?
   for file in `find . -name vlc.exe | grep -- -`; do
     found="$found $(readlink -f $file)"
   done
@@ -2643,7 +2646,7 @@ build_ffmpeg_dependencies() {
   build_fftw # Uses dlfcn.
   build_libsamplerate # Needs libsndfile >= 1.0.6 and fftw >= 0.15.0 for tests. Uses dlfcn.
   build_librubberband # Needs libsamplerate, libsndfile, fftw and vamp_plugin. 'configure' will fail otherwise. Eventhough librubberband doesn't necessarily need them (libsndfile only for 'rubberband.exe' and vamp_plugin only for "Vamp audio analysis plugin"). How to use the bundled libraries '-DUSE_SPEEX' and '-DUSE_KISSFFT'?
-  #build_frei0r # Needs dlfcn. could use opencv...
+  build_frei0r # Needs dlfcn. could use opencv...
   if [[ "$bits_target" != "32" ]]; then
     if [[ $build_svt_hevc = y ]]; then
       build_svt-hevc
@@ -2665,13 +2668,15 @@ build_ffmpeg_dependencies() {
 
   build_libxvid # FFmpeg now has native support, but libxvid still provides a better image.
   build_libsrt # requires gnutls, mingw-std-threads
-  build_libaribcaption
+  if [[ $ffmpeg_git_checkout_version != *"n6.0"* ]] && [[ $ffmpeg_git_checkout_version != *"n5.1"* ]] && [[ $ffmpeg_git_checkout_version != *"n5.0"* ]] && [[ $ffmpeg_git_checkout_version != *"n4.4"* ]] && [[ $ffmpeg_git_checkout_version != *"n4.3"* ]] && [[ $ffmpeg_git_checkout_version != *"n4.2"* ]] && [[ $ffmpeg_git_checkout_version != *"n4.1"* ]] && [[ $ffmpeg_git_checkout_version != *"n3.4"* ]] && [[ $ffmpeg_git_checkout_version != *"n3.2"* ]] && [[ $ffmpeg_git_checkout_version != *"n2.8"* ]]; then
+    build_libaribcaption
+  fi
   build_libaribb24
   build_libtesseract
   build_lensfun  # requires png, zlib, iconv
   # build_libtensorflow # broken
   build_libvpx
-  #build_libx265
+  build_libx265
   build_libopenh264
   build_libaom
   build_dav1d
